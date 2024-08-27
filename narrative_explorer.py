@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import editdistance
 import re
+import urllib
 
 st.set_page_config(layout="wide")
 
@@ -18,29 +19,74 @@ def get_lines():
 
 with st.sidebar:
     st.header("Search parameters")
+    
+    mode_options = (
+        "contains",
+        "starts with",
+        "edit distance",
+        "python regex",
+    )
+    
+    try:
+        qp_mode = urllib.parse.unquote_plus(st.query_params["mode"])
+        mode_index = mode_options.index(qp_mode)
+    except (ValueError, KeyError):
+        mode_index = 0
+    
     search_mode = st.selectbox(
         "Search mode",
-        (
-            "contains",
-            "starts with",
-            "edit distance",
-            "python regex",
-        ),
+        mode_options,
+        index=mode_index,
     )
-    search_term = st.text_input("Search term", "", placeholder="e.g. he.eats")
+
+    try:
+        qp_term = urllib.parse.unquote_plus(st.query_params["term"])
+    except KeyError:
+        qp_term = ""
+
+    search_term = st.text_input(
+        "Search term",
+        qp_term,
+        placeholder="e.g. he.eats",
+    )
+    
+    try:
+        qp_context = urllib.parse.unquote_plus(st.query_params["context"])
+        qp_context = int(qp_context)
+    except (KeyError, ValueError):
+        qp_context = 3
+    
     context_size = st.number_input(
-        "Context size", min_value=0, value=3, max_value=100, step=1
+        "Context size", min_value=0, value=qp_context, max_value=100, step=1
     )
+    
+    try:
+        qp_ndisp = urllib.parse.unquote_plus(st.query_params["ndisp"])
+        qp_ndisp = int(qp_ndisp)
+    except (KeyError, ValueError):
+        qp_ndisp = 100
+        
     num_display_results = st.number_input(
-        "Max number of search results to display", min_value=1, value=100, step=1
+        "Max number of search results to display", min_value=1, value=qp_ndisp, step=1
     )
+    
     st.subheader("Advanced options")
+    
+    match_mode_options = (
+        "match individual words",
+        "match whole line",
+    )
+    
+    try:
+        qp_match_mode = urllib.parse.unquote_plus(st.query_params["match_mode"])
+        match_mode_index = match_mode_options.index(qp_match_mode)
+    except (ValueError, KeyError):
+        match_mode_index = 0
+    
     match_mode = st.selectbox(
         "search modifiers",
-        (
-            "match individual words",
-            "match whole line",
-        ),
+        match_mode_options,
+        index=match_mode_index,
     )
 
 df = get_lines()
@@ -66,6 +112,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if search_term:
+    
+    query_str = ""
+    query_str += f"mode={urllib.parse.quote_plus(search_mode)}"
+    query_str += f"&term={urllib.parse.quote_plus(search_term)}"
+    query_str += f"&context={urllib.parse.quote_plus(str(context_size))}"
+    query_str += f"&ndisp={urllib.parse.quote_plus(str(num_display_results))}"
+    query_str += f"&match_mode={urllib.parse.quote_plus(match_mode)}"
+    st.markdown(f"[Permalink to search results](?{query_str})")
+    st.query_params.from_dict({
+        "mode": search_mode,
+        "term": search_term,
+        "context": context_size,
+        "ndisp": num_display_results,
+        "match_mode": match_mode,
+    })
+
     if search_mode == "starts with":
         hits = df[df.Line.str.startswith(search_term)].index
         if match_mode == "match whole line":
