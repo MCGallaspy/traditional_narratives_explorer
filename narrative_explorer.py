@@ -3,6 +3,7 @@ import streamlit as st
 import editdistance
 import re
 import urllib
+import unicodedata
 
 st.set_page_config(layout="wide")
 
@@ -15,6 +16,7 @@ def get_lines():
     df = pd.DataFrame(data=lines)
     df = df.rename(columns={0: "Line"})
     df.index.name = "Line number"
+    df.Line = df.Line.apply(lambda x: unicodedata.normalize("NFC", x))
     return df
 
 
@@ -89,7 +91,7 @@ with st.sidebar:
         )
         if search_mode and "mode" in st.query_params:
             st.query_params["mode"] = urllib.parse.quote_plus(search_mode)
-
+        
     try:
         assert "term" not in st.session_state
         qp_term = urllib.parse.unquote_plus(st.query_params["term"])
@@ -108,6 +110,29 @@ with st.sidebar:
         )
         if search_term and "term" in st.query_params:
             st.query_params["term"] = urllib.parse.quote_plus(search_term)
+    
+    st.markdown("*You can copy the following special characters into your clipboard "
+                "by clicking on them.*")
+    special_chars = [
+        ["š", "ž", "ʔ"],
+        [None, "á", "à"],
+        ["ą", "ą́", "ą̀"],
+        [None, "é", "è"],
+        ["ę", "ę́", "ę̀"],
+        [None, "í", "ì"],
+        [None, "ó", "ò"],
+        ["ǫ", "ǫ́", "ǫ̀"],
+        [None, "ú", "ù"],
+    ]
+    n = 4
+    for charset in special_chars:
+        cols = st.columns(n)
+        assert len(charset) <= n
+        for col, char in zip(cols, charset):
+            if char is not None:
+                col.code(char)
+    
+    st.subheader("Advanced options")
     
     try:
         assert "context" not in st.session_state
@@ -141,8 +166,6 @@ with st.sidebar:
         )
         if num_display_results and "ndisp" in st.query_params:
             st.query_params["ndisp"] = num_display_results
-
-    st.subheader("Advanced options")
     
     match_mode_options = (
         "match individual words",
@@ -171,26 +194,27 @@ with st.sidebar:
     st.markdown('---')
     
     try:
-        assert "ogonek" not in st.session_state
-        qp_ogonek = urllib.parse.unquote_plus(st.query_params["ogonek"])
-        combine_ogonek = st.toggle(
-            "Replace combining ogonek?",
-            value=True,
-            key="ogonek",
+        assert "normalize" not in st.session_state
+        qp_normalize = urllib.parse.unquote_plus(st.query_params["normalize"])
+        qp_normalize = True if qp_normalize == "True" else False
+        normalize = st.toggle(
+            "Normalize UNICODE characters in search term?",
+            value=qp_normalize,
+            key="normalize",
         )
     except (KeyError, AssertionError):
-        combine_ogonek = st.toggle(
-            "Replace combining ogonek?",
+        normalize = st.toggle(
+            "Normalize UNICODE characters in search term?",
             value=True,
-            key="ogonek",
+            key="normalize",
         )
-        if "ogonek" in st.query_params:
-            st.query_params["ogonek"] = combine_ogonek
+        if "normalize" in st.query_params:
+            st.query_params["normalize"] = normalize
     
-    st.markdown("When enabled, this replaces two-character sequences containing a "
-                "combining ogonek (e.g. `ǫ`, which is really `o` and `̨`) in the search term "
-                "with a distinct but visually identical character used in the source document "
-                "(e.g. `ǫ`).")
+    st.markdown("When enabled, this normalizes the search term to UNICODE normal form c (NFC). "
+                "For example the two character UNICODE sequence `ǫ` (which is really `o` and "
+                "followed by a combining ogonek character `̨`) would be replaced in the search term "
+                "with a distinct but visually identical character `ǫ`.")
 
 
 def highlight_line(line, term):
@@ -221,17 +245,11 @@ if search_term:
     query_str += f"&context={urllib.parse.quote_plus(str(context_size))}"
     query_str += f"&ndisp={urllib.parse.quote_plus(str(num_display_results))}"
     query_str += f"&match_mode={urllib.parse.quote_plus(match_mode)}"
-    query_str += f"&ogonek={urllib.parse.quote_plus(str(combine_ogonek))}"
+    query_str += f"&normalize={urllib.parse.quote_plus(str(normalize))}"
     st.markdown(f"[Permalink to search results](?{query_str})")
     
-    if combine_ogonek:
-        replacements = {
-            "ǫ": "ǫ",
-            "ę": "ę",
-            "ą": "ą",
-        }
-        for pat, repl in replacements.items():
-            search_term = re.sub(pat, repl, search_term)
+    if normalize:
+        search_term = unicodedata.normalize("NFC", search_term)
     
     hits = search(search_mode, match_mode, search_term, df)
     nresults = len(hits)
