@@ -16,7 +16,11 @@ def get_lines():
     df = df.rename(columns={0: "Line"})
     df.index.name = "Line number"
     return df
-    
+
+
+df = get_lines()
+
+
 @st.cache_data
 def search(search_mode, match_mode, search_term, df):
     """ Search a dataframe in various modes for a given search term.
@@ -68,48 +72,76 @@ with st.sidebar:
     )
     
     try:
+        assert "mode" not in st.session_state
         qp_mode = urllib.parse.unquote_plus(st.query_params["mode"])
         mode_index = mode_options.index(qp_mode)
-    except (ValueError, KeyError):
-        mode_index = 0
-    
-    search_mode = st.selectbox(
-        "Search mode",
-        mode_options,
-        index=mode_index,
-    )
+        search_mode = st.selectbox(
+            "Search mode",
+            mode_options,
+            index=mode_index,
+            key="mode",
+        )
+    except (ValueError, KeyError, AssertionError):
+        search_mode = st.selectbox(
+            "Search mode",
+            mode_options,
+            key="mode",
+        )
+        if search_mode and "mode" in st.query_params:
+            st.query_params["mode"] = urllib.parse.quote_plus(search_mode)
 
     try:
+        assert "term" not in st.session_state
         qp_term = urllib.parse.unquote_plus(st.query_params["term"])
-    except KeyError:
-        qp_term = ""
-
-    search_term = st.text_input(
-        "Search term",
-        qp_term,
-        placeholder="e.g. he.eats",
-    )
+        search_term = st.text_input(
+            "Search term",
+            qp_term,
+            placeholder="e.g. he.eats",
+            key="term",
+        )
+    except (KeyError, AssertionError):
+        search_term = st.text_input(
+            "Search term",
+            st.session_state.get("term", ""),
+            placeholder="e.g. he.eats",
+            key="term",
+        )
+        if search_term and "term" in st.query_params:
+            st.query_params["term"] = urllib.parse.quote_plus(search_term)
     
     try:
+        assert "context" not in st.session_state
         qp_context = urllib.parse.unquote_plus(st.query_params["context"])
         qp_context = int(qp_context)
-    except (KeyError, ValueError):
-        qp_context = 3
-    
-    context_size = st.number_input(
-        "Context size", min_value=0, value=qp_context, max_value=100, step=1
-    )
+        context_size = st.number_input(
+            "Context size", min_value=0, value=qp_context, max_value=100, step=1,
+            key="context",
+        )
+    except (KeyError, ValueError, AssertionError):
+        context_size = st.number_input(
+            "Context size", min_value=0, value=3, max_value=100, step=1,
+            key="context",
+        )
+        if context_size and "context" in st.query_params:
+            st.query_params["context"] = context_size
+
     
     try:
+        assert "ndisp" not in st.session_state
         qp_ndisp = urllib.parse.unquote_plus(st.query_params["ndisp"])
         qp_ndisp = int(qp_ndisp)
-    except (KeyError, ValueError):
-        qp_ndisp = 100
-        
-    num_display_results = st.number_input(
-        "Max number of search results to display", min_value=1, value=qp_ndisp, step=1
-    )
-    
+        num_display_results = st.number_input(
+            "Max number of search results to display", min_value=1, value=qp_ndisp, step=1,
+            key="ndisp",
+        )
+    except (KeyError, ValueError, AssertionError):
+        num_display_results = st.number_input(
+            "Max number of search results to display", min_value=1, value=100, step=1,
+            key="ndisp",
+        )
+        if num_display_results and "ndisp" in st.query_params:
+            st.query_params["ndisp"] = num_display_results
+
     st.subheader("Advanced options")
     
     match_mode_options = (
@@ -118,28 +150,48 @@ with st.sidebar:
     )
     
     try:
+        assert "match_mode" not in st.session_state
         qp_match_mode = urllib.parse.unquote_plus(st.query_params["match_mode"])
         match_mode_index = match_mode_options.index(qp_match_mode)
-    except (ValueError, KeyError):
-        match_mode_index = 0
-    
-    match_mode = st.selectbox(
-        "search modifiers",
-        match_mode_options,
-        index=match_mode_index,
-    )
+        match_mode = st.selectbox(
+            "search modifiers",
+            match_mode_options,
+            index=match_mode_index,
+            key="match_mode",
+        )
+    except (ValueError, KeyError, AssertionError):
+        match_mode = st.selectbox(
+            "search modifiers",
+            match_mode_options,
+            key="match_mode",
+        )
+        if match_mode and "match_mode" in st.query_params:
+            st.query_params["match_mode"] = urllib.parse.quote_plus(match_mode)
     
     st.markdown('---')
-    combine_ogonek = st.toggle(
-        "Replace combining ogonek?",
-        value=True,
-    )
+    
+    try:
+        assert "ogonek" not in st.session_state
+        qp_ogonek = urllib.parse.unquote_plus(st.query_params["ogonek"])
+        combine_ogonek = st.toggle(
+            "Replace combining ogonek?",
+            value=True,
+            key="ogonek",
+        )
+    except (KeyError, AssertionError):
+        combine_ogonek = st.toggle(
+            "Replace combining ogonek?",
+            value=True,
+            key="ogonek",
+        )
+        if "ogonek" in st.query_params:
+            st.query_params["ogonek"] = combine_ogonek
+    
     st.markdown("When enabled, this replaces two-character sequences containing a "
                 "combining ogonek (e.g. `ǫ`, which is really `o` and `̨`) in the search term "
                 "with a distinct but visually identical character used in the source document "
                 "(e.g. `ǫ`).")
 
-df = get_lines()
 
 def highlight_line(line, term):
     term.replace(".", "\\.")
@@ -172,15 +224,6 @@ if search_term:
     query_str += f"&ogonek={urllib.parse.quote_plus(str(combine_ogonek))}"
     st.markdown(f"[Permalink to search results](?{query_str})")
     
-    st.query_params.from_dict({k: urllib.parse.quote_plus(str(v)) for (k, v) in {
-        "mode": search_mode,
-        "term": search_term,
-        "context": context_size,
-        "ndisp": num_display_results,
-        "match_mode": match_mode,
-        "ogonek": combine_ogonek,
-    }.items()})
-    
     if combine_ogonek:
         replacements = {
             "ǫ": "ǫ",
@@ -204,6 +247,3 @@ if search_term:
     
 else:
     st.dataframe(df, use_container_width=True)
-    
-
-
