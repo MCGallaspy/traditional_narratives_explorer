@@ -16,6 +16,46 @@ def get_lines():
     df = df.rename(columns={0: "Line"})
     df.index.name = "Line number"
     return df
+    
+@st.cache_data
+def search(search_mode, match_mode, search_term, df):
+    """ Search a dataframe in various modes for a given search term.
+    Cached to hopefully improve online performance.
+    """
+    if search_mode == "starts with":
+        hits = df[df.Line.str.startswith(search_term)].index
+        if match_mode == "match whole line":
+            hits = df[df.Line.str.startswith(search_term.replace(".", r"\."))].index
+        elif match_mode == "match individual words":
+            mask = df.Line.apply(lambda x: any(word.startswith(search_term) for word in x.split(" ")))
+            hits = df[mask].index
+    elif search_mode == "contains":
+        if match_mode == "match whole line":
+            hits = df[df.Line.str.contains(search_term.replace(".", r"\."))].index
+        elif match_mode == "match individual words":
+            mask = df.Line.apply(lambda x: any(search_term in word for word in x.split()))
+            hits = df[mask].index
+    elif search_mode == "edit distance":
+        if match_mode == "match whole line":
+            df['edit_distance'] = df.Line.apply(lambda x: editdistance.eval(x, search_term))
+            relevance = df.sort_values(by='edit_distance')
+            hits = relevance.index
+        elif match_mode == "match individual words":
+            df['edit_distance'] = df.Line.apply(
+                lambda x: min(editdistance.eval(word, search_term) for word in x.split()))
+            relevance = df.sort_values(by='edit_distance')
+            hits = relevance.index
+    elif search_mode == "python regex":
+        if match_mode == "match whole line":
+            pattern = re.compile(search_term)
+            mask = df.Line.apply(lambda x: bool(pattern.match(x)))
+        elif match_mode == "match individual words":
+            pattern = re.compile(search_term)
+            mask = df.Line.apply(lambda x: any(bool(pattern.match(word)) for word in x.split()))
+        hits = df[mask].index
+    
+    return hits
+
 
 with st.sidebar:
     st.header("Search parameters")
@@ -120,46 +160,16 @@ if search_term:
     query_str += f"&ndisp={urllib.parse.quote_plus(str(num_display_results))}"
     query_str += f"&match_mode={urllib.parse.quote_plus(match_mode)}"
     st.markdown(f"[Permalink to search results](?{query_str})")
-    st.query_params.from_dict({
+    
+    st.query_params.from_dict({k: urllib.parse.quote_plus(str(v)) for (k, v) in {
         "mode": search_mode,
         "term": search_term,
         "context": context_size,
         "ndisp": num_display_results,
         "match_mode": match_mode,
-    })
-
-    if search_mode == "starts with":
-        hits = df[df.Line.str.startswith(search_term)].index
-        if match_mode == "match whole line":
-            hits = df[df.Line.str.startswith(search_term.replace(".", r"\."))].index
-        elif match_mode == "match individual words":
-            mask = df.Line.apply(lambda x: any(word.startswith(search_term) for word in x.split(" ")))
-            hits = df[mask].index
-    elif search_mode == "contains":
-        if match_mode == "match whole line":
-            hits = df[df.Line.str.contains(search_term.replace(".", r"\."))].index
-        elif match_mode == "match individual words":
-            mask = df.Line.apply(lambda x: any(search_term in word for word in x.split()))
-            hits = df[mask].index
-    elif search_mode == "edit distance":
-        if match_mode == "match whole line":
-            df['edit_distance'] = df.Line.apply(lambda x: editdistance.eval(x, search_term))
-            relevance = df.sort_values(by='edit_distance')
-            hits = relevance.index
-        elif match_mode == "match individual words":
-            df['edit_distance'] = df.Line.apply(
-                lambda x: min(editdistance.eval(word, search_term) for word in x.split()))
-            relevance = df.sort_values(by='edit_distance')
-            hits = relevance.index
-    elif search_mode == "python regex":
-        if match_mode == "match whole line":
-            pattern = re.compile(search_term)
-            mask = df.Line.apply(lambda x: bool(pattern.match(x)))
-        elif match_mode == "match individual words":
-            pattern = re.compile(search_term)
-            mask = df.Line.apply(lambda x: any(bool(pattern.match(word)) for word in x.split()))
-        hits = df[mask].index
+    }.items()})
     
+    hits = search(search_mode, match_mode, search_term, df)
     nresults = len(hits)
     if nresults == 0:
         st.markdown(f"No results for search term **{search_term}**")
