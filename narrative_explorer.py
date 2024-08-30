@@ -128,6 +128,16 @@ with st.sidebar:
         match_mode_options,
         index=match_mode_index,
     )
+    
+    st.markdown('---')
+    combine_ogonek = st.toggle(
+        "Replace combining ogonek?",
+        value=True,
+    )
+    st.markdown("When enabled, this replaces two-character sequences containing a "
+                "combining ogonek (e.g. `ǫ`, which is really `o` and `̨`) in the search term "
+                "with a distinct but visually identical character used in the source document "
+                "(e.g. `ǫ`).")
 
 df = get_lines()
 
@@ -159,6 +169,7 @@ if search_term:
     query_str += f"&context={urllib.parse.quote_plus(str(context_size))}"
     query_str += f"&ndisp={urllib.parse.quote_plus(str(num_display_results))}"
     query_str += f"&match_mode={urllib.parse.quote_plus(match_mode)}"
+    query_str += f"&ogonek={urllib.parse.quote_plus(str(combine_ogonek))}"
     st.markdown(f"[Permalink to search results](?{query_str})")
     
     st.query_params.from_dict({k: urllib.parse.quote_plus(str(v)) for (k, v) in {
@@ -167,7 +178,17 @@ if search_term:
         "context": context_size,
         "ndisp": num_display_results,
         "match_mode": match_mode,
+        "ogonek": combine_ogonek,
     }.items()})
+    
+    if combine_ogonek:
+        replacements = {
+            "ǫ": "ǫ",
+            "ę": "ę",
+            "ą": "ą",
+        }
+        for pat, repl in replacements.items():
+            search_term = re.sub(pat, repl, search_term)
     
     hits = search(search_mode, match_mode, search_term, df)
     nresults = len(hits)
